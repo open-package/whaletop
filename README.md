@@ -1,7 +1,7 @@
 # whaletop
 
-[![PyPI](https://img.shields.io/pypi/v/whaletop)](https://pypi.org/project/whaletop/)
-[![Python](https://img.shields.io/pypi/pyversions/whaletop)](https://pypi.org/project/whaletop/)
+[![PyPI](https://img.shields.io/pypi/v/whaletop?label=pypi)](https://pypi.org/project/whaletop/)
+[![Python](https://img.shields.io/pypi/pyversions/whaletop?label=python)](https://pypi.org/project/whaletop/)
 [![CI](https://github.com/open-package/whaletop/actions/workflows/ci.yml/badge.svg)](https://github.com/open-package/whaletop/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/open-package/whaletop/blob/main/LICENSE)
 
