@@ -1,0 +1,61 @@
+# Push a tag like v0.2.0 (matching src/whaletop/__init__.py) to release:
+# runs the tests, builds the .deb and attaches it to a GitHub Release.
+# apt-repo.yml then republishes the apt repository.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e '.[dev]'
+      - run: pytest -q
+
+  deb:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Check tag matches package version
+        run: |
+          version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/whaletop/__init__.py)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match __version__ $version in src/whaletop/__init__.py"
+            exit 1
+          fi
+
+      - name: Build .deb
+        env:
+          MAINTAINER: ${{ vars.DEB_MAINTAINER }}
+          HOMEPAGE: ${{ github.server_url }}/${{ github.repository }}
+          PYTHON: python
+        run: |
+          if [ -z "$MAINTAINER" ]; then
+            echo "::error::set the repository variable DEB_MAINTAINER, e.g. 'Your Name <you@example.com>'"
+            exit 1
+          fi
+          packaging/build-deb.sh
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.deb --title "whaletop $GITHUB_REF_NAME" --generate-notes

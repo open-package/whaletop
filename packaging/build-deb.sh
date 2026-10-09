@@ -29,6 +29,11 @@ if [ -z "${MAINTAINER:-}" ]; then
     fi
 fi
 
+if ! [[ "$MAINTAINER" =~ ^[^\<\>\"]+\ \<[^\<\>@\ ]+@[^\<\>\ ]+\>$ ]]; then
+    echo "MAINTAINER must look like: Name <email@example.com>  (got: $MAINTAINER)" >&2
+    exit 1
+fi
+
 PKG="whaletop_${VERSION}_all"
 STAGE="$ROOT/build/deb/$PKG"
 LIB="$STAGE/usr/lib/whaletop"

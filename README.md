@@ -14,6 +14,17 @@ Hst ▁▁▂▂▁▃▅▇▅▃▂▁                          Engine: 29.8.0
 
 ## Install
 
+**Debian / Ubuntu** (Ubuntu 22.04+, Debian 12+):
+
+```sh
+curl -fsSL https://open-package.github.io/whaletop/whaletop.gpg | sudo tee /usr/share/keyrings/whaletop.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/whaletop.gpg] https://open-package.github.io/whaletop stable main" \
+  | sudo tee /etc/apt/sources.list.d/whaletop.list
+sudo apt update && sudo apt install whaletop
+```
+
+**From source**, any OS with Python 3.10+:
+
 ```sh
 pipx install .                # or: python -m venv .venv && .venv/bin/pip install -e .
 whaletop                      # or: python -m whaletop
@@ -57,6 +68,8 @@ Destructive actions always ask for confirmation. `X` opens a clean-up dialog tha
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/pytest           # unit + Textual pilot tests against a fake Docker service
 ```
+
+Releasing and packaging: see [packaging/README.md](packaging/README.md).
 
 Layout: `src/whaletop/app.py` (app shell), `views/` (one class per tab), `widgets/resource_table.py` (sortable/filterable table base), `widgets/meters.py` (header), `screens/` (logs, inspect, dialogs, help), `docker_client.py` (the only module that talks to Docker).
 
