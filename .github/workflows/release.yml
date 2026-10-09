@@ -1,5 +1,6 @@
 # Push a tag like v0.2.0 (matching src/whaletop/__init__.py) to release:
-# runs the tests, builds the .deb and attaches it to a GitHub Release.
+# runs the tests, builds the .deb and attaches it to a GitHub Release, then
+# builds the wheel + sdist, attaches them too and publishes them to PyPI.
 # apt-repo.yml then republishes the apt repository.
 name: release
 
@@ -59,3 +60,42 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/*.deb --title "whaletop $GITHUB_REF_NAME" --generate-notes
+
+  python-dist:
+    needs: deb
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attach the wheel and sdist to the GitHub release
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - name: Attach to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python-dist
+          path: dist/
+
+  # Kept separate and minimal: the id-token used for PyPI trusted publishing is
+  # only ever available to this job, which runs nothing but the upload.
+  pypi:
+    needs: python-dist
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/whaletop/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

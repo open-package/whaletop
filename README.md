@@ -23,10 +23,21 @@ echo "deb [signed-by=/usr/share/keyrings/whaletop.gpg] https://open-package.gith
 sudo apt update && sudo apt install whaletop
 ```
 
-**From source**, any OS with Python 3.10+:
+**Any OS with Python 3.10+** (other Linux distros, macOS), from PyPI:
+
+```sh
+pipx install whaletop         # or: uv tool install whaletop
+```
+
+**From source:**
 
 ```sh
 pipx install .                # or: python -m venv .venv && .venv/bin/pip install -e .
+```
+
+**Run it:**
+
+```sh
 whaletop                      # or: python -m whaletop
 whaletop -H ssh://me@server   # any DOCKER_HOST-style address
 ```
@@ -69,12 +80,12 @@ Destructive actions always ask for confirmation. `X` opens a clean-up dialog tha
 .venv/bin/pytest           # unit + Textual pilot tests against a fake Docker service
 ```
 
-Releasing and packaging: see [packaging/README.md](packaging/README.md).
+Releasing and packaging: see [packaging/README.md](https://github.com/open-package/whaletop/blob/main/packaging/README.md).
 
 Layout: `src/whaletop/app.py` (app shell), `views/` (one class per tab), `widgets/resource_table.py` (sortable/filterable table base), `widgets/meters.py` (header), `screens/` (logs, inspect, dialogs, help), `docker_client.py` (the only module that talks to Docker).
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](https://github.com/open-package/whaletop/blob/main/LICENSE).
 
 whaletop is an independent project. Docker is a trademark of Docker, Inc., and whaletop is not affiliated with or endorsed by Docker, Inc.

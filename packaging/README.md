@@ -28,6 +28,25 @@
    Keep the same key for the life of the repository. Users have its public half installed, and
    changing it breaks `apt update` for every existing user.
 
+4. **PyPI** (trusted publishing, so there's no API token to create or store):
+   1. Create an account at https://pypi.org/account/register/ and turn on two-factor
+      authentication, which PyPI requires before you can publish.
+   2. Open https://pypi.org/manage/account/publishing/ and, under *Add a new pending publisher*,
+      choose **GitHub** and fill in:
+
+      | Field | Value |
+      |---|---|
+      | PyPI Project Name | `whaletop` |
+      | Owner | `open-package` |
+      | Repository name | `whaletop` |
+      | Workflow name | `release.yml` |
+      | Environment name | `pypi` |
+
+   The first successful release creates the `whaletop` project on PyPI under your account, and
+   the pending publisher becomes a normal one. GitHub creates the `pypi` environment
+   automatically on the first run. You can optionally add yourself as a required reviewer
+   (*Settings → Environments → pypi*) so every PyPI upload waits for your approval.
+
 ## Releasing a version
 
 1. Bump `__version__` in `src/whaletop/__init__.py` and commit to `main`.
@@ -37,12 +56,16 @@
    git push origin v0.2.0
    ```
 3. `release.yml` runs the tests, checks that the tag matches `__version__`, builds
-   `whaletop_<version>_all.deb` and attaches it to a GitHub Release.
+   `whaletop_<version>_all.deb` and attaches it to a GitHub Release. It then builds the wheel
+   and sdist, attaches them to the same release and publishes them to PyPI.
 4. `apt-repo.yml` then rebuilds the apt repository from every release's `.deb`, signs it, and
    publishes it to `https://open-package.github.io/whaletop/`.
 
 To republish the apt repo without a new release (for example after fixing the signing secret),
 run the **apt-repo** workflow by hand from the *Actions* tab.
+
+PyPI never accepts the same version twice, even after a deletion. If a release fails after the
+PyPI upload, fix the problem and release a new version number.
 
 ## Building locally
 
