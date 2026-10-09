@@ -66,6 +66,10 @@
    git tag v0.2.0
    git push origin v0.2.0
    ```
+   Or create the release in the GitHub web UI (*Releases → Draft a new release*, new tag
+   `v0.2.0` on `main`, *Publish*). The workflow then attaches the files to that release instead
+   of creating one. If *Release immutability* is turned on in the repo settings, published
+   releases can't receive files afterwards, so use the tag push.
 3. `release.yml` runs the tests, checks that the tag matches `__version__`, builds
    `whaletop_<version>_all.deb` and attaches it to a GitHub Release. It then builds the wheel
    and sdist, attaches them to the same release and publishes them to PyPI.
