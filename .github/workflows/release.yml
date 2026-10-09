@@ -70,14 +70,24 @@ jobs:
         with:
           name: dist
           path: dist/
-      # A release created in the web UI already exists (and is already public);
-      # then only the files are attached.
-      - name: Create GitHub release or attach to existing one
+      # The release can already exist: created in the web UI, or left over from an
+      # earlier attempt. GitHub turns a release into a draft when its tag is deleted,
+      # so after a tag was moved the existing release is a draft. In every case the
+      # result is a published release that holds exactly the files of this build.
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+            gh release view "$tag" --json assets --jq '.assets[].name' | while read -r name; do
+              if [ ! -f "dist/$name" ]; then
+                echo "Removing stale asset $name"
+                gh release delete-asset "$tag" "$name" --yes
+              fi
+            done
+            gh release edit "$tag" --draft=false --latest
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --title "whaletop $GITHUB_REF_NAME" --generate-notes
+            gh release create "$tag" dist/* --title "whaletop $tag" --generate-notes --latest
           fi
