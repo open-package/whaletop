@@ -8,3 +8,4 @@ build/
 # signing keys: never commit
 *.private.asc
 whaletop-apt-signing.*
+site/

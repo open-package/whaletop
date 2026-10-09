@@ -2,7 +2,7 @@
 # creating a release with that tag in the GitHub web UI. Either way this workflow:
 # runs the tests, builds the .deb and attaches it to a GitHub Release, then
 # builds the wheel + sdist, attaches them too and publishes them to PyPI.
-# apt-repo.yml then republishes the apt repository.
+# pages.yml then republishes the documentation and the apt repository.
 name: release
 
 on:

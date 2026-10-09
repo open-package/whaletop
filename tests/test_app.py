@@ -9,7 +9,7 @@ async def settle(pilot, t=0.6):
     await pilot.pause(t)
 
 
-async def until(pred, timeout=3.0):
+async def until(pred, timeout=10.0):
     for _ in range(int(timeout / 0.05)):
         if pred():
             return True

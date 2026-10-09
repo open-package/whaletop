@@ -18,6 +18,10 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: System :: Systems Administration",
 ]
 dependencies = ["textual>=1.0", "docker>=7.0"]
@@ -30,6 +34,7 @@ Issues = "https://github.com/open-package/whaletop/issues"
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.7,<10"]
 
 [project.scripts]
 whaletop = "whaletop.__main__:main"

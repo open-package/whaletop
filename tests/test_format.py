@@ -88,3 +88,18 @@ def test_old_engine_anonymous_prune_never_touches_named_volumes():
     api._version = "1.56"
     svc.prune_volumes(all_unused=False, anonymous=["anon1"])
     assert pruned == [{"filters": None}]
+
+
+def test_ssh_tunnel_parses_docker_style_urls():
+    import pytest
+
+    from whaletop.docker_client import SSHTunnel
+
+    t = SSHTunnel("ssh://deploy@prod-01:2222")
+    assert (t.dest, t.port, t.remote) == ("deploy@prod-01", 2222, "/var/run/docker.sock")
+    assert t._ssh("-O", "exit") == ["ssh", "-p", "2222", "-O", "exit", "deploy@prod-01"]
+    t = SSHTunnel("ssh://prod-01")  # user and port come from ~/.ssh/config
+    assert (t.dest, t.port) == ("prod-01", None)
+    assert SSHTunnel("ssh://me@host/run/user/1000/docker.sock").remote == "/run/user/1000/docker.sock"
+    with pytest.raises(ValueError):
+        SSHTunnel("tcp://host:2375")

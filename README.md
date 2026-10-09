@@ -1,91 +1,107 @@
 # whaletop
 
-An htop-style terminal UI for Docker (unofficial; not affiliated with Docker, Inc.). It covers what Docker Desktop does (containers, compose stacks, images, volumes and networks) without leaving the terminal.
+[![PyPI](https://img.shields.io/pypi/v/whaletop)](https://pypi.org/project/whaletop/)
+[![Python](https://img.shields.io/pypi/pyversions/whaletop)](https://pypi.org/project/whaletop/)
+[![CI](https://github.com/open-package/whaletop/actions/workflows/ci.yml/badge.svg)](https://github.com/open-package/whaletop/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/open-package/whaletop/blob/main/LICENSE)
 
-```
-CPU[|||||||||||          13.6% of 8 cpu]   Containers: 8 running, 3 exited   Images: 602
-Mem[|||                      263M/7.6G]   Disk: images 139G (90G reclaimable) · volumes 2.1G …
-Hst ▁▁▂▂▁▃▅▇▅▃▂▁                          Engine: 29.8.0  my-host
- 1 Containers  2 Images  3 Volumes  4 Networks
-   NAME            IMAGE          STATUS               CPU% ▼        MEM%      MEM / LIMIT   NET ↓↑/s …
- ● busy-loop       alpine         Up 11 minutes        104.0 ▮▮▮▮▮▮  0.0 ····  372K / 7.6G   ↓0B ↑0B
- ● api-1           api:dev        Up 25 minutes (h…)     0.2 ······  0.4 ····  31.9M / 7.6G  ↓262B ↑131B
-```
+A terminal user interface for Docker in the style of `htop`. whaletop provides the container,
+Compose, image, volume and network management of Docker Desktop in a keyboard-driven console
+application that runs locally, over SSH and on headless servers.
 
-## Install
+**Documentation:** <https://open-package.github.io/whaletop/>
 
-**Debian / Ubuntu** (Ubuntu 22.04+, Debian 12+):
+![whaletop containers view](https://raw.githubusercontent.com/open-package/whaletop/main/docs/assets/containers.png)
+
+## Features
+
+- **Live resource usage.** CPU, memory, network and block I/O per container, aggregated per
+  Compose project, with host-level meters and CPU history.
+- **Compose-aware.** Containers are grouped by Compose project; start, stop, restart, pull,
+  `up` and `down` apply to a whole stack or a single service.
+- **Container operations.** Logs with filtering and follow mode, interactive shell (`exec`),
+  `attach`, inspect, pause, kill and remove.
+- **Images, volumes and networks.** Usage by container, size, pull, run and remove.
+- **Previewed clean-up.** Each prune operation lists the affected objects and the reclaimable
+  space before anything is removed.
+- **Event-driven.** Views update from the Docker event stream; no manual refresh is required.
+
+## Installation
+
+### Debian and Ubuntu
+
+Supported releases: Ubuntu 22.04 and later, Debian 12 and later.
 
 ```sh
-curl -fsSL https://open-package.github.io/whaletop/whaletop.gpg | sudo tee /usr/share/keyrings/whaletop.gpg >/dev/null
+curl -fsSL https://open-package.github.io/whaletop/whaletop.gpg \
+  | sudo tee /usr/share/keyrings/whaletop.gpg >/dev/null
 echo "deb [signed-by=/usr/share/keyrings/whaletop.gpg] https://open-package.github.io/whaletop stable main" \
   | sudo tee /etc/apt/sources.list.d/whaletop.list
 sudo apt update && sudo apt install whaletop
 ```
 
-**Any OS with Python 3.10+** (other Linux distros, macOS), from PyPI:
+### PyPI
+
+For other Linux distributions and macOS. Requires Python 3.10 or later.
 
 ```sh
-pipx install whaletop         # or: uv tool install whaletop
+pipx install whaletop
+# or
+uv tool install whaletop
 ```
 
-**From source:**
+See the [installation guide](https://open-package.github.io/whaletop/install/) for source
+installs, upgrades and removal.
+
+## Usage
 
 ```sh
-pipx install .                # or: python -m venv .venv && .venv/bin/pip install -e .
+whaletop                         # local Docker daemon
+whaletop -H ssh://user@server    # remote daemon over SSH
 ```
 
-**Run it:**
+The daemon is selected from `--host`, then `DOCKER_HOST` (including `DOCKER_TLS_VERIFY` and
+`DOCKER_CERT_PATH`), then the current Docker CLI context. See
+[remote hosts](https://open-package.github.io/whaletop/install/#remote-hosts) for SSH and TLS
+details.
 
-```sh
-whaletop                      # or: python -m whaletop
-whaletop -H ssh://me@server   # any DOCKER_HOST-style address
-```
+| Key | Action |
+|---|---|
+| `1`–`4` | Containers, Images, Volumes, Networks |
+| `/` | Filter the current list |
+| `>` / `<` | Change the sort column |
+| `s` `r` `d` | Start/stop, restart, remove |
+| `l` `e` `i` | Logs, shell, inspect |
+| `u` `D` | Compose up, Compose down |
+| `X` | Clean up unused objects |
+| `?` | Help |
+| `q` | Quit |
 
-whaletop requires Python 3.10+ and access to the Docker socket. It also needs the `docker` CLI for exec, attach and compose. It connects to `--host`, then `$DOCKER_HOST`, then the docker CLI's current context, so Docker Desktop's `desktop-linux` socket works without extra setup.
+The full key reference is in the [usage guide](https://open-package.github.io/whaletop/usage/).
 
-## What you can do
+## Requirements
 
-| Tab | Shows | Keys |
-|---|---|---|
-| **1 Containers** | Compose projects as expandable ◆ groups (with summed CPU and memory), their containers nested below, and standalone containers as plain rows. Live CPU%, MEM%, mem/limit, net and disk I/O rates, PIDs, ports | `enter` expand/collapse · `s` start/stop · `r` restart · `l` logs · `d` remove (on a project row these act on the whole stack, and `d` runs `compose down`) · `p` pause · `k`/`F9` kill · `e` shell · `a` attach · `i` inspect · `u` compose up · `D` down · `P` pull · `h` hide stopped · `X` clean up stopped containers |
-| **2 Images** | repo, tag, size, age, containers using each image | `P` pull · `R` run · `d` remove · `X` clean up: dangling images, all unused images, build cache |
-| **3 Volumes** | driver, which containers use it, size | `d` remove · `X` clean up: unused anonymous / all unused volumes |
-| **4 Networks** | driver, subnet, attached containers | `d` remove · `X` clean up unused networks |
-
-The following keys work on every list:
-- `/` (or `F3`/`F4`) filters.
-- `>`/`F6` and `<` cycle the sort column. Clicking a column header also sorts.
-- `I` inverts the sort order.
-- `1`–`4`, `[` and `]` switch tabs.
-- `F5` refreshes.
-- `?`/`F1` opens help.
-- `q`/`F10` quits.
-
-In the logs viewer, `/` filters lines, `f` toggles follow, `t` toggles timestamps, `g`/`G` jump to the top/bottom, and `esc` goes back.
-
-Destructive actions always ask for confirmation. `X` opens a clean-up dialog that lists exactly what each option would remove and how much space it frees before anything is deleted. Exec and attach suspend the TUI, hand your terminal to `docker exec -it` or `docker attach`, and bring whaletop back when you exit.
-
-## How it works
-
-- **Live stats:** one streaming `/containers/{id}/stats` connection per running container, each on its own background thread (`stats.py`). CPU% uses the same formula as `docker stats`. Memory excludes the page cache.
-- **Updates:** a `/events` subscription (`events.py`) marks the affected tabs as stale, and they reload within 300 ms. A 5-second poll on the container list catches anything the event stream missed.
-- **No UI blocking:** every Docker API call runs on a daemon thread, so slow calls never freeze the UI or delay quitting. `/system/df` can take 30s or more on hosts with hundreds of images. That's why the Disk line can show *calculating…* for a while after start; it refreshes every 2 minutes.
-- **Compose:** projects come from `com.docker.compose.*` labels. Project actions run `docker compose -p <project> --project-directory <dir> -f <files> …`. If the compose files no longer exist, stop, restart and remove still work by acting on the containers directly.
+- Access to a Docker Engine API (local socket, SSH or TCP). Membership of the `docker` group
+  or equivalent permissions is required for the local socket.
+- The `docker` CLI, for interactive shells, `attach` and Compose operations.
+- Docker Compose v2 (`docker compose`), for Compose operations.
 
 ## Development
 
 ```sh
+git clone https://github.com/open-package/whaletop.git
+cd whaletop
+python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-.venv/bin/pytest           # unit + Textual pilot tests against a fake Docker service
+.venv/bin/pytest
 ```
 
-Releasing and packaging: see [packaging/README.md](https://github.com/open-package/whaletop/blob/main/packaging/README.md).
-
-Layout: `src/whaletop/app.py` (app shell), `views/` (one class per tab), `widgets/resource_table.py` (sortable/filterable table base), `widgets/meters.py` (header), `screens/` (logs, inspect, dialogs, help), `docker_client.py` (the only module that talks to Docker).
+Release and packaging procedures are documented in the
+[maintainer guide](https://open-package.github.io/whaletop/releasing/).
 
 ## License
 
-Apache License 2.0. See [LICENSE](https://github.com/open-package/whaletop/blob/main/LICENSE).
+Licensed under the [Apache License 2.0](https://github.com/open-package/whaletop/blob/main/LICENSE).
 
-whaletop is an independent project. Docker is a trademark of Docker, Inc., and whaletop is not affiliated with or endorsed by Docker, Inc.
+whaletop is an independent project and is not affiliated with or endorsed by Docker, Inc.
+Docker is a trademark of Docker, Inc.

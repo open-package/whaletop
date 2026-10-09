@@ -1,15 +1,22 @@
-# Rebuilds the signed apt repository from the .deb files of every GitHub release
-# and publishes it to GitHub Pages. Runs after each successful release, or by hand.
+# Publishes the GitHub Pages site: the MkDocs documentation at the root and the
+# signed apt repository (dists/, pool/, whaletop.gpg) next to it. The apt
+# repository is rebuilt from the .deb assets of every GitHub release.
 #
-# This is a separate workflow (not a job in release.yml) because workflow_run
-# executes on the default branch, which the github-pages environment allows to
-# deploy; deployments from tag refs are rejected by default.
-name: apt-repo
+# workflow_run executes on the default branch, which the github-pages environment
+# allows to deploy; deployments started from tag refs are rejected by default.
+name: pages
 
 on:
   workflow_run:
     workflows: [release]
     types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "packaging/build-apt-repo.sh"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -19,12 +26,15 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  NO_MKDOCS_2_WARNING: "true"
+
 jobs:
   publish:
-    # Also runs when a later release job (e.g. PyPI) failed: the repo is rebuilt from
+    # Also runs when a later release job (e.g. PyPI) failed: the site is rebuilt from
     # whatever .deb files the releases have, so this is always safe.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.event_name != 'workflow_run' ||
       github.event.workflow_run.conclusion == 'success' ||
       github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
@@ -37,6 +47,15 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build documentation
+        run: |
+          pip install '.[docs]'
+          mkdocs build --strict --site-dir site
 
       - name: Install apt-ftparchive
         run: sudo apt-get update -qq && sudo apt-get install -y -qq apt-utils
@@ -57,13 +76,13 @@ jobs:
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
         run: |
           if [ -z "$APT_SIGNING_KEY" ]; then
-            echo "::error::add the APT_SIGNING_KEY secret (armored private key, see packaging/README.md)"
+            echo "::error::add the APT_SIGNING_KEY secret (armored private key, see docs/releasing.md)"
             exit 1
           fi
           echo "$APT_SIGNING_KEY" | gpg --batch --import
           key_id="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')"
           if [ -z "$key_id" ]; then
-            echo "::error::APT_SIGNING_KEY contains no private key. It must be the contents of whaletop-apt-signing.private.asc (starting with -----BEGIN PGP PRIVATE KEY BLOCK-----), not the public key."
+            echo "::error::APT_SIGNING_KEY contains no private key. It must start with -----BEGIN PGP PRIVATE KEY BLOCK-----, not the public key."
             exit 1
           fi
           echo "Signing key: $key_id"
@@ -83,10 +102,14 @@ jobs:
         env:
           GPG_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
         run: |
-          packaging/build-apt-repo.sh debs site "$KEY_ID"
-          url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
-          sed "s|@REPO_URL@|$url|g; s|@GITHUB_URL@|$GITHUB_SERVER_URL/$GITHUB_REPOSITORY|g" \
-            packaging/site/index.html > site/index.html
+          packaging/build-apt-repo.sh debs apt "$KEY_ID"
+          for path in dists pool whaletop.gpg whaletop.asc; do
+            if [ -e "site/$path" ]; then
+              echo "::error::documentation output contains $path, which the apt repository needs"
+              exit 1
+            fi
+          done
+          cp -r apt/dists apt/pool apt/whaletop.gpg apt/whaletop.asc site/
           touch site/.nojekyll
 
       - uses: actions/configure-pages@v6

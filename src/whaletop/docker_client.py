@@ -5,7 +5,11 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
+import tempfile
+import time
+from urllib.parse import urlsplit
 from dataclasses import dataclass, field
 from typing import Any, Iterator
 
@@ -22,22 +26,63 @@ COMPOSE_FILES = "com.docker.compose.project.config_files"
 BUILTIN_NETWORKS = {"bridge", "host", "none"}
 
 
-def resolve_host(host: str | None = None) -> str | None:
-    """DOCKER_HOST / --host win; otherwise use the docker CLI's current context
-    (e.g. Docker Desktop's desktop-linux socket), which docker-py ignores."""
-    if host:
-        return host
-    if os.environ.get("DOCKER_HOST"):
-        return os.environ["DOCKER_HOST"]
-    try:
-        from docker.context import ContextAPI
+class SSHTunnel:
+    """Forward a remote Docker socket to a local Unix socket with the system `ssh` client.
 
-        ctx = ContextAPI.get_current_context()
-        if ctx and ctx.Host:
-            return ctx.Host
-    except Exception:
-        pass
-    return None
+    docker-py's own ssh:// support needs paramiko, which has compiled dependencies; the
+    system client also honours ~/.ssh/config, agents, jump hosts and password prompts.
+    One multiplexed connection is kept open until close().
+
+    ssh://user@host[:port] forwards /var/run/docker.sock; a path selects another socket,
+    e.g. ssh://user@host/run/user/1000/docker.sock for rootless Docker.
+    """
+
+    DEFAULT_SOCKET = "/var/run/docker.sock"
+
+    def __init__(self, url: str):
+        u = urlsplit(url)
+        if u.scheme != "ssh" or not u.hostname:
+            raise ValueError(f"not an ssh:// URL: {url}")
+        self.url = url
+        self.dest = f"{u.username}@{u.hostname}" if u.username else u.hostname
+        self.port = u.port
+        self.remote = u.path if u.path not in ("", "/") else self.DEFAULT_SOCKET
+        self._dir: str | None = None
+
+    @property
+    def local(self) -> str:
+        assert self._dir
+        return os.path.join(self._dir, "docker.sock")
+
+    def _ssh(self, *args: str) -> list[str]:
+        return ["ssh", *(["-p", str(self.port)] if self.port else []), *args, self.dest]
+
+    def open(self, timeout: float = 30.0) -> str:
+        """Connect (prompting on the terminal if needed); returns unix:// URL of the forward."""
+        if not shutil.which("ssh"):
+            raise DockerException("ssh:// hosts need the OpenSSH client (ssh) on PATH")
+        self._dir = tempfile.mkdtemp(prefix="whaletop-ssh-")
+        argv = self._ssh("-f", "-N", "-M", "-S", os.path.join(self._dir, "ctl"),
+                         "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=30",
+                         "-L", f"{self.local}:{self.remote}")
+        if subprocess.run(argv).returncode != 0:  # -f: returns once the forward is up
+            self.close()
+            raise DockerException(f"ssh connection to {self.dest} failed")
+        deadline = time.monotonic() + timeout
+        while not os.path.exists(self.local):
+            if time.monotonic() > deadline:
+                self.close()
+                raise DockerException(f"ssh forward to {self.dest}:{self.remote} did not come up")
+            time.sleep(0.05)
+        return f"unix://{self.local}"
+
+    def close(self) -> None:
+        if not self._dir:
+            return
+        subprocess.run(self._ssh("-S", os.path.join(self._dir, "ctl"), "-O", "exit"),
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        shutil.rmtree(self._dir, ignore_errors=True)
+        self._dir = None
 
 
 class Stream:
@@ -103,17 +148,60 @@ def container_name(c: dict[str, Any]) -> str:
 
 class DockerService:
     def __init__(self, host: str | None = None):
-        self.host = resolve_host(host)
-        self.client = docker.DockerClient(base_url=self.host, max_pool_size=64) if self.host \
-            else docker.from_env(max_pool_size=64)
-        self.api = self.client.api
-        self.api.ping()
+        """Daemon selection, in order: `host` (--host), DOCKER_HOST (with DOCKER_TLS_VERIFY /
+        DOCKER_CERT_PATH), the docker CLI's current context (with its TLS settings), then
+        the default local socket. ssh:// addresses go through an SSHTunnel."""
+        self.tunnel: SSHTunnel | None = None
+        self.cli_host: str | None = None  # DOCKER_HOST for docker CLI subprocesses
+        kw: dict[str, Any] = {"max_pool_size": 64}
+        ctx = None
+        if not host and not os.environ.get("DOCKER_HOST"):
+            try:
+                from docker.context import ContextAPI
+
+                ctx = ContextAPI.get_current_context()
+            except Exception:
+                ctx = None
+        target = host or os.environ.get("DOCKER_HOST") or (ctx.Host if ctx and ctx.Host else None)
+        self.host = target  # for display
+        try:
+            if target and target.startswith("ssh://"):
+                self.tunnel = SSHTunnel(target)
+                local = self.tunnel.open()
+                self.client = docker.DockerClient(base_url=local, **kw)
+                self.cli_host = local  # reuse the tunnel: no second login for exec/compose
+            elif host:
+                self.client = docker.DockerClient(base_url=host, **kw)
+                self.cli_host = host
+            elif os.environ.get("DOCKER_HOST"):
+                self.client = docker.from_env(**kw)  # honours the TLS environment variables
+            elif ctx and ctx.Host:
+                self.client = docker.DockerClient(base_url=ctx.Host, tls=ctx.TLSConfig or False, **kw)
+            else:
+                self.client = docker.from_env(**kw)
+            self.api = self.client.api
+            self.api.ping()
+        except Exception as e:
+            tunnel = self.tunnel
+            self.close()
+            if tunnel:  # ssh itself succeeded, so the failure is on the remote side
+                raise DockerException(
+                    f"connected to {tunnel.dest} over SSH, but the Docker socket {tunnel.remote} could "
+                    "not be reached through it. The SSH server must allow forwarding "
+                    "(AllowTcpForwarding / AllowStreamLocalForwarding in sshd_config) and the remote "
+                    "user needs access to the socket (docker group).") from e
+            raise
+
+    def close(self) -> None:
+        if self.tunnel:
+            self.tunnel.close()
+            self.tunnel = None
 
     # env for docker CLI subprocesses so they talk to the same daemon
     def cli_env(self) -> dict[str, str]:
         env = dict(os.environ)
-        if self.host and not os.environ.get("DOCKER_HOST"):
-            env["DOCKER_HOST"] = self.host
+        if self.cli_host:
+            env["DOCKER_HOST"] = self.cli_host
         return env
 
     # --- system --------------------------------------------------------

@@ -1,0 +1,71 @@
+site_name: whaletop
+site_description: A terminal user interface for Docker in the style of htop.
+site_url: https://open-package.github.io/whaletop/
+repo_url: https://github.com/open-package/whaletop
+repo_name: open-package/whaletop
+edit_uri: edit/main/docs/
+copyright: >-
+  Apache License 2.0 · Not affiliated with or endorsed by Docker, Inc.
+
+exclude_docs: |
+  screenshots.py
+
+nav:
+  - Home: index.md
+  - Installation: install.md
+  - Usage: usage.md
+  - How it works: how-it-works.md
+  - Development and releases: releasing.md
+
+theme:
+  name: material
+  icon:
+    logo: material/console-line
+    repo: fontawesome/brands/github
+  favicon: assets/favicon.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn

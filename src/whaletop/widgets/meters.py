@@ -56,10 +56,14 @@ class Meters(Widget):
         return self.cpu / self.ncpu
 
     def _spark(self, width: int) -> Text:
+        """CPU history, scaled to the recent peak (at least 10%) so that typical
+        low load is still visible; the peak is shown at the end."""
+        width -= 6
         vals = list(self.history)[-width:]
-        t = Text("".join(SPARK[min(8, int(v / 100 * 8 + (0.999 if v > 0 else 0)))] for v in vals),
+        top = max([10.0, *vals])
+        t = Text("".join(SPARK[min(8, int(v / top * 8 + (0.999 if v > 0 else 0)))] for v in vals),
                  style="green")
-        return Text(" " * (width - len(vals))) + t
+        return Text(" " * (width - len(vals))) + t + Text(f" {top:4.0f}%", style="dim")
 
     def _disk(self) -> Text:
         t = Text()
