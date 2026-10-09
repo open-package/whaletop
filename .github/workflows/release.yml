@@ -1,8 +1,12 @@
-# Release by pushing a tag like v0.2.0 (matching src/whaletop/__init__.py), or by
-# creating a release with that tag in the GitHub web UI. Either way this workflow:
-# runs the tests, builds the .deb and attaches it to a GitHub Release, then
-# builds the wheel + sdist, attaches them too and publishes them to PyPI.
-# pages.yml then republishes the documentation and the apt repository.
+# Release by pushing a tag vX.Y.Z that matches __version__ in src/whaletop/__init__.py.
+#
+# Order of operations, chosen so that a failure never leaves a half-published version:
+#   1. test + build   all artifacts are built and verified; nothing is published.
+#                     A failure here leaves no trace: fix, move the tag, retry the
+#                     same version.
+#   2. pypi           the only irreversible step (PyPI never accepts a version twice).
+#   3. github-release created only after PyPI succeeded; safe to re-run.
+#   4. pages.yml      runs after this workflow and republishes docs + apt repository.
 name: release
 
 on:
@@ -11,6 +15,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
@@ -26,75 +34,16 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: pytest -q
 
-  deb:
+  build:
     needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
+    uses: ./.github/workflows/build.yml
+    with:
+      release: true
 
-      - name: Check tag matches package version
-        run: |
-          version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/whaletop/__init__.py)"
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match __version__ $version in src/whaletop/__init__.py"
-            exit 1
-          fi
-
-      - name: Build .deb
-        env:
-          MAINTAINER: ${{ vars.DEB_MAINTAINER }}
-          HOMEPAGE: ${{ github.server_url }}/${{ github.repository }}
-          PYTHON: python
-        run: |
-          if [ -z "$MAINTAINER" ]; then
-            echo "::error::set the repository variable DEB_MAINTAINER, e.g. 'Your Name <you@example.com>'"
-            exit 1
-          fi
-          packaging/build-deb.sh
-
-      # The release may already exist when it was created in the web UI (which also
-      # pushes the tag that started this run): then just attach the files to it.
-      - name: Create GitHub release or attach to existing one
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/*.deb --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" dist/*.deb --title "whaletop $GITHUB_REF_NAME" --generate-notes
-          fi
-
-  python-dist:
-    needs: deb
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write   # attach the wheel and sdist to the GitHub release
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: python -m pip install build twine
-      - run: python -m build
-      - run: twine check --strict dist/*
-      - name: Attach to GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
-      - uses: actions/upload-artifact@v7
-        with:
-          name: python-dist
-          path: dist/
-
-  # Kept separate and minimal: the id-token used for PyPI trusted publishing is
-  # only ever available to this job, which runs nothing but the upload.
+  # Kept minimal: the id-token used for PyPI trusted publishing is only ever
+  # available to this job, which runs nothing but the upload.
   pypi:
-    needs: python-dist
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -104,6 +53,31 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: python-dist
+          name: dist
           path: dist/
+      - name: Keep only the Python packages
+        run: rm -f dist/*.deb
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      # A release created in the web UI already exists (and is already public);
+      # then only the files are attached.
+      - name: Create GitHub release or attach to existing one
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "whaletop $GITHUB_REF_NAME" --generate-notes
+          fi

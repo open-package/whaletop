@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "whaletop"
-version = "0.1.0"
+dynamic = ["version"]
 description = "htop-style terminal UI for Docker: containers, images, volumes, networks and compose stacks"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,6 +38,9 @@ docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.7,<10"]
 
 [project.scripts]
 whaletop = "whaletop.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "whaletop.__version__" }  # single source of truth: src/whaletop/__init__.py
 
 [tool.setuptools.packages.find]
 where = ["src"]

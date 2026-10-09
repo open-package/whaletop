@@ -1,0 +1,87 @@
+# Builds and verifies every release artifact without publishing anything.
+# Called by ci.yml on every push and pull request, and by release.yml before any
+# publishing step, so a packaging problem is found before a tag is ever pushed.
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: Building for a release tag (enforces tag == __version__)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Read version
+        run: |
+          version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/whaletop/__init__.py)"
+          [ -n "$version" ] || { echo "::error::cannot read __version__"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "Version: $version"
+
+      - name: Check tag matches version
+        if: inputs.release
+        run: |
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match __version__ $VERSION in src/whaletop/__init__.py"
+            exit 1
+          fi
+
+      - name: Build .deb
+        env:
+          MAINTAINER: ${{ vars.DEB_MAINTAINER }}
+          HOMEPAGE: ${{ github.server_url }}/${{ github.repository }}
+          PYTHON: python
+        run: |
+          if [ -z "$MAINTAINER" ]; then
+            if [ "${{ inputs.release }}" = "true" ]; then
+              echo "::error::set the repository variable DEB_MAINTAINER, e.g. 'Name <email@example.com>'"
+              exit 1
+            fi
+            export MAINTAINER="CI build <noreply@github.com>"   # pull requests from forks
+          fi
+          packaging/build-deb.sh
+
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install --quiet build twine
+          python -m build
+          twine check --strict dist/*.whl dist/*.tar.gz
+
+      - name: Check artifact names
+        run: |
+          expected="whaletop-$VERSION-py3-none-any.whl whaletop-$VERSION.tar.gz whaletop_${VERSION}_all.deb"
+          actual="$(cd dist && find . -type f -printf '%f\n' | sort | xargs)"
+          if [ "$actual" != "$(echo "$expected" | tr ' ' '\n' | sort | xargs)" ]; then
+            echo "::error::dist/ contains [$actual], expected [$expected]"
+            exit 1
+          fi
+
+      - name: Install and run the wheel
+        run: |
+          python -m venv /tmp/wheel-venv
+          /tmp/wheel-venv/bin/pip install --quiet dist/*.whl
+          test "$(/tmp/wheel-venv/bin/whaletop --version)" = "whaletop $VERSION"
+
+      - name: Install and run the .deb
+        run: |
+          sudo apt-get install -y -qq ./dist/whaletop_"$VERSION"_all.deb
+          test "$(/usr/bin/whaletop --version)" = "whaletop $VERSION"
+          sudo apt-get remove -y -qq whaletop
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error

@@ -33,3 +33,6 @@ jobs:
           python-version: "3.12"
       - run: pip install '.[docs]'
       - run: mkdocs build --strict
+
+  build:
+    uses: ./.github/workflows/build.yml
