@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 dist/
 build/
+
+# signing keys: never commit
+*.private.asc
+whaletop-apt-signing.*

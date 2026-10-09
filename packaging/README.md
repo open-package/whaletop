@@ -8,22 +8,33 @@
    `DEB_MAINTAINER`, for example `open-package <maintainers@example.com>`. It becomes the
    `Maintainer:` line of the `.deb`.
 
-3. **Signing key:** apt only accepts signed repositories. Create a key used only for this repo,
-   without a passphrase, since it lives only in a GitHub secret:
+3. **Signing key:** apt only accepts signed repositories. Create a key used only for this repo.
+   Use a temporary `GNUPGHOME` so it never enters your personal keyring:
 
    ```sh
-   export GNUPGHOME="$(mktemp -d)"          # keep it out of your personal keyring
-   gpg --batch --passphrase '' --quick-gen-key "whaletop apt signing <maintainers@example.com>" ed25519 sign 5y
-   gpg --armor --export-secret-keys > whaletop-signing-key.asc
-   gpg --armor --export > whaletop-signing-key.pub.asc
+   export GNUPGHOME="$(mktemp -d)"
+   gpg --batch --passphrase '' --quick-gen-key "whaletop apt signing <contact@hasan-amit.com>" ed25519 sign never
+   gpg --list-keys            # note the fingerprint for your records
+   gpg --armor --export-secret-keys > whaletop-apt-signing.private.asc
+   gpg --armor --export        > whaletop-apt-signing.public.asc
    ```
 
-   Add the contents of `whaletop-signing-key.asc` as the repository secret `APT_SIGNING_KEY`
-   (*Settings → Secrets and variables → Actions → Secrets*). Store the file somewhere safe
-   offline, then delete it and the temporary `GNUPGHOME`.
+   - **No passphrase:** the key only lives in an encrypted GitHub secret. To use one anyway,
+     drop `--passphrase ''` and add the passphrase as the secret `APT_SIGNING_PASSPHRASE`.
+   - **No expiry:** when an apt key expires, every user gets `apt update` errors until they
+     re-download it by hand, which is why apt repositories normally use non-expiring keys.
 
-   If you'd rather protect the key with a passphrase, add it as the secret
-   `APT_SIGNING_PASSPHRASE`.
+   Add the **entire** contents of `whaletop-apt-signing.private.asc`, including the
+   `-----BEGIN/END PGP PRIVATE KEY BLOCK-----` lines, as the repository secret `APT_SIGNING_KEY`
+   (*Settings → Secrets and variables → Actions → New repository secret*).
+
+   Back the private key up offline (a password manager or an encrypted drive), then remove the
+   local copies:
+
+   ```sh
+   shred -u whaletop-apt-signing.private.asc
+   rm -rf "$GNUPGHOME"; unset GNUPGHOME
+   ```
 
    Keep the same key for the life of the repository. Users have its public half installed, and
    changing it breaks `apt update` for every existing user.
