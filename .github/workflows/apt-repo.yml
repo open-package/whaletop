@@ -61,7 +61,23 @@ jobs:
             exit 1
           fi
           echo "$APT_SIGNING_KEY" | gpg --batch --import
-          echo "KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')" >> "$GITHUB_ENV"
+          key_id="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')"
+          if [ -z "$key_id" ]; then
+            echo "::error::APT_SIGNING_KEY contains no private key. It must be the contents of whaletop-apt-signing.private.asc (starting with -----BEGIN PGP PRIVATE KEY BLOCK-----), not the public key."
+            exit 1
+          fi
+          echo "Signing key: $key_id"
+          echo "KEY_ID=$key_id" >> "$GITHUB_ENV"
+
+      - name: Check the key can sign
+        env:
+          GPG_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
+        run: |
+          if ! echo test | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+                 --local-user "$KEY_ID" --clearsign >/dev/null; then
+            echo "::error::Signing with key $KEY_ID failed. If the key has a passphrase, add it as the APT_SIGNING_PASSPHRASE secret."
+            exit 1
+          fi
 
       - name: Build signed apt repository
         env:
